@@ -1,0 +1,11 @@
+# секрет — OAuth-токены Notion, не публиковать
+.tokens.json
+
+# node
+node_modules/
+tools/pdfwork/out/
+
+# мусор ОС
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<title>Карта корпуса БГУ · Карла Маркса, 31</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f5f5f4; color: #1f2937;
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+  }
+
+  /* ==== шапка с поиском ==== */
+  .topbar { background: #fff; border-bottom: 1px solid #e7e5e4; padding: 10px 14px 10px; flex: none; }
+  .title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .title-row h1 { margin: 0; font-size: 15px; font-weight: 700; flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title-row h1 small { display: block; font-size: 11px; font-weight: 400; color: #6b7280; }
+  .icon-btn {
+    flex: none; width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid #d6d3d1;
+    background: #fff; color: #44403c; font-size: 15px; cursor: pointer;
+  }
+  .icon-btn:hover { border-color: #2563eb; color: #1d4ed8; }
+
+  .search { position: relative; }
+  .search input {
+    width: 100%; padding: 12px 14px; font-size: 16px; border: 1.5px solid #d6d3d1;
+    border-radius: 12px; outline: none; background: #fff; color: #1f2937;
+  }
+  .search input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+  .sug {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #fff;
+    border: 1px solid #e7e5e4; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.14);
+    max-height: min(46vh, 380px); overflow: auto; z-index: 40; display: none;
+  }
+  .sug.open { display: block; }
+  .sug-item { padding: 10px 14px; display: flex; gap: 10px; align-items: center; cursor: pointer; }
+  .sug-item + .sug-item { border-top: 1px solid #f5f5f4; }
+  .sug-item.active, .sug-item:hover { background: #eff6ff; }
+  .sug-num { font-weight: 700; min-width: 46px; color: #1e3a8a; }
+  .sug-name { flex: 1; font-size: 13px; color: #374151; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sug-floor { font-size: 11px; color: #6b7280; background: #f5f5f4; border-radius: 8px; padding: 2px 8px; flex: none; }
+  .sug-empty { padding: 12px 14px; font-size: 13px; color: #6b7280; }
+
+  /* ==== переключатель уровней ==== */
+  .floors { display: flex; gap: 6px; padding: 8px 14px; background: #fff;
+    border-bottom: 1px solid #e7e5e4; overflow-x: auto; flex: none; }
+  .floor-btn {
+    border: 1.5px solid #d6d3d1; background: #fff; color: #44403c; min-width: 44px;
+    padding: 8px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .floor-btn:hover { border-color: #2563eb; color: #1d4ed8; }
+  .floor-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .floor-btn.mezz { border-style: dashed; }
+  .floor-btn.mezz.active { border-style: solid; }
+  .floors .hint { font-size: 11px; color: #9ca3af; margin-left: auto; align-self: center;
+    white-space: nowrap; padding-left: 8px; }
+
+  /* ==== карта ==== */
+  .map-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none;
+    background: #fafaf9; }
+  #map { width: 100%; height: 100%; display: block; cursor: grab; user-select: none; -webkit-user-select: none; }
+  #map.panning { cursor: grabbing; }
+  #panzoom { transform-origin: 0 0; }
+  .room { cursor: pointer; }
+  .room .body { transition: opacity .25s; }
+  .room:hover .body { stroke-width: 3.2; }
+  #map.dimmed .room:not(.hl) { opacity: .38; }
+  #map.dimmed .stair, #map.dimmed .level-outline, #map.dimmed .zone-label { opacity: .38; }
+  .stair, .level-outline, .zone-label { transition: opacity .25s; }
+  .hl-ring { fill: none; stroke: #f59e0b; stroke-width: 5; pointer-events: none;
+    animation: hl-pulse 1.1s ease-in-out infinite; }
+  @keyframes hl-pulse { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: .3; } }
+
+  .map-tools { position: absolute; right: 12px; bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px; z-index: 20;
+    transition: bottom .25s ease, top .25s ease; }
+  /* на мобильном открытая нижняя карточка перекрывает низ карты — поднимаем кнопки */
+  @media (max-width: 899px) {
+    body.card-open .map-tools { bottom: auto; top: 10px; }
+  }
+  .tool-btn {
+    width: 42px; height: 42px; border-radius: 12px; border: 1.5px solid #d6d3d1; background: #fff;
+    color: #44403c; font-size: 19px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  .tool-btn:hover { border-color: #2563eb; color: #1d4ed8; }
+
+  /* ==== карточка (mobile: нижняя шторка, desktop: панель справа) ==== */
+  .card {
+    position: absolute; left: 0; right: 0; bottom: 0; background: #fff; z-index: 30;
+    border-radius: 16px 16px 0 0; box-shadow: 0 -6px 28px rgba(0,0,0,.14);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    transform: translateY(105%); transition: transform .25s ease;
+    touch-action: pan-y;
+  }
+  .card.open { transform: none; }
+  .card-close {
+    position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 9px;
+    border: none; background: #f5f5f4; color: #57534e; font-size: 14px; cursor: pointer;
+  }
+  .card-num { font-size: 26px; font-weight: 800; color: #1e3a8a; line-height: 1.1; }
+  .card h2 { margin: 2px 0 10px; font-size: 15px; font-weight: 600; color: #1f2937; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .badge { font-size: 11.5px; padding: 3px 10px; border-radius: 999px; background: #f5f5f4; color: #44403c;
+    border: 1px solid #e7e5e4; }
+  .card .howto { font-size: 13.5px; color: #374151; margin: 0 0 8px; line-height: 1.5; }
+  .card .note { font-size: 12px; color: #78716c; margin: 0; line-height: 1.5; }
+  .card .legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e7e5e4;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; color: #44403c; }
+  .chip i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+
+  @media (min-width: 900px) {
+    .topbar { padding: 14px 24px; }
+    .title-row h1 { font-size: 18px; }
+    .floors { padding: 10px 24px; }
+    .card {
+      left: auto; right: 16px; bottom: auto; top: 16px; width: 380px; max-width: calc(100% - 32px);
+      border-radius: 14px; box-shadow: 0 10px 32px rgba(0,0,0,.16);
+      transform: translateY(-10px); opacity: 0; pointer-events: none;
+      transition: transform .2s ease, opacity .2s ease; max-height: calc(100% - 32px); overflow: auto;
+    }
+    .card.open { transform: none; opacity: 1; pointer-events: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title-row">
+    <h1>Корпус БГУ · Карла Маркса, 31
+      <small>Главный корпус · метро «Купаловская» · этажи 1–5</small>
+    </h1>
+    <button class="icon-btn" id="legendBtn" aria-label="Обозначения и управление" title="Обозначения и управление">ⓘ</button>
+  </div>
+  <div class="search">
+    <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+      placeholder="Аудитория или место: 63А, 316, деканат, фудкорт, туалет…"
+      aria-label="Поиск аудитории" role="combobox" aria-expanded="false" aria-controls="sug">
+    <div class="sug" id="sug" role="listbox"></div>
+  </div>
+</header>
+
+<nav class="floors" id="floors" aria-label="Выбор уровня"></nav>
+
+<main class="map-wrap" id="mapWrap">
+  <svg id="map" viewBox="0 0 1240 680" preserveAspectRatio="xMidYMid meet" role="img"></svg>
+  <div class="map-tools">
+    <button class="tool-btn" id="zoomIn" aria-label="Приблизить">+</button>
+    <button class="tool-btn" id="zoomOut" aria-label="Отдалить">−</button>
+    <button class="tool-btn" id="zoomReset" aria-label="Показать весь этаж">⤢</button>
+  </div>
+  <aside class="card" id="card" aria-live="polite"></aside>
+</main>
+
+<!-- Снапшот data/economics-building.json (встроен, чтобы страница открывалась с диска без сервера).
+     Схема v2: уровни с координатами, оцифрованными с PDF-стенда (октябрь 2026). -->
+<script type="application/json" id="building-data">
+{
+ "building": {
+  "id": "km31",
+  "name": "Учебный корпус БГУ (экономический и филологический факультеты)",
+  "address": "220030, г. Минск, ул. Карла Маркса, 31",
+  "metro": "Купаловская",
+  "floors": 5,
+  "schedule": "Пн–Сб 08:00–22:00"
+ },
+ "confLabels": {
+  "stand": "уровень подтверждён (пользователь/стенд)",
+  "official": "подтверждено источником",
+  "hypothesis": "позиция приблизительная"
+ },
+ "levels": [
+  {
+   "id": 1,
+   "title": "1 ЭТАЖ",
+   "short": "1",
+   "mezz": false,
+   "region": [
+    0,
+    0,
+    7200,
+    2800
+   ],
+   "outline": "M100,100 H1792 V678 H100 Z M100,678 H7100 V2700 H100 Z",
+   "stairs": [
+    {
+     "x": 1850,
+     "y": 700,
+     "w": 450,
+     "h": 550,
+     "label": "лестница"
+    },
+    {
+     "x": 6750,
+     "y": 700,
+     "w": 300,
+     "h": 550,
+     "label": "лестница"
+    }
+   ],
+   "rooms": [
+    {
+     "id": "ACT",
+     "number": "ACT",
+     "name": "Актовый зал (крыло сверху)",
+     "type": "hall",
+     "conf": "stand",
+     "cx": 946,
+     "cy": 389,
+     "w": 1450,
+     "h": 440
+    },
+    {
+     "id": "FOOD",
+     "number": "FOOD",
+     "name": "Фудкорт (вдоль всего левого ребра)",
+     "type": "food",
+     "conf": "stand",
+     "cx": 946,
+     "cy": 1689,
+     "w": 1692,
+     "h": 2022
+    },
+    {
+     "id": "EXIT15",
+     "number": "ВЫХОД-ДВОР",
+     "name": "Дверь во внутренний дворик (на улицу)",
+     "type": "entrance",
+     "conf": "stand",
+     "cx": 2750,
+     "cy": 1000,
+     "w": 700,
+     "h": 600
+    },
+    {
+     "id": "WC1F",
+     "number": "WC1Ж",
+     "name": "WC (Ж)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 3550,
+     "cy": 1000,
+     "w": 700,
+     "h": 600
+    },
+    {
+     "id": "WARD1",
+     "number": "ГАРДЕРОБ",
+     "name": "Гардероб (напротив входа)",
+     "type": "wardrobe",
+     "conf": "stand",
+     "cx": 4500,
+     "cy": 1000,
+     "w": 1000,
+     "h": 600
+    },
+    {
+     "id": "GUARD",
+     "number": "ВАХТА",
+     "name": "Вахта",
+     "type": "entrance",
+     "conf": "stand",
+     "cx": 5475,
+     "cy": 1000,
+     "w": 750,
+     "h": 600
+    },
+    {
+     "id": "WC1M",
+     "number": "WC1М",
+     "name": "WC (М)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 6300,
+     "cy": 1000,
+     "w": 700,
+     "h": 600
+    },
+    {
+     "id": "T2",
+     "number": "ТУРН2",
+     "name": "Турникеты (у левого края гардероба)",
+     "type": "turnstile",
+     "conf": "stand",
+     "cx": 4200,
+     "cy": 1600,
+     "w": 900,
+     "h": 300
+    },
+    {
+     "id": "T1",
+     "number": "ТУРН1",
+     "name": "Турникеты (у вахты)",
+     "type": "turnstile",
+     "conf": "stand",
+     "cx": 5700,
+     "cy": 1600,
+     "w": 900,
+     "h": 300
+    },
+    {
+     "id": "ENTRY",
+     "number": "ВХОД",
+     "name": "Вход с ул. Карла Маркса",
+     "type": "entrance",
+     "conf": "stand",
+     "cx": 4500,
+     "cy": 2550,
+     "w": 1600,
+     "h": 300
+    },
+    {
+     "id": "LIB1",
+     "number": "1",
+     "name": "Библиотека (к. 1), вдоль правого ребра",
+     "type": "library",
+     "conf": "stand",
+     "cx": 6700,
+     "cy": 2075,
+     "w": 800,
+     "h": 1250
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "title": "2 ЭТАЖ",
+   "short": "2",
+   "mezz": false,
+   "region": [
+    -750,
+    -5410,
+    7200,
+    2800
+   ],
+   "outline": "M100,100 H4378 V-2710 H6150 V100 H7100 V2700 H100 Z M-850,-5310 H6150 V-2710 H-850 Z",
+   "stairs": [
+    {
+     "x": 1850,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5078,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5200,
+     "y": -5310,
+     "w": 900,
+     "h": 2600,
+     "label": "лестничная клетка"
+    }
+   ],
+   "zoneLabels": [
+    {
+     "x": 4728,
+     "y": -1600,
+     "text": "окна",
+     "size": 240
+    },
+    {
+     "x": 4728,
+     "y": -1240,
+     "text": "во двор",
+     "size": 240
+    }
+   ],
+   "rooms": [
+    {
+     "id": "FIL2",
+     "number": "ФИЛФАК",
+     "name": "Филологический факультет — весь этаж",
+     "type": "department",
+     "conf": "stand",
+     "cx": 3600,
+     "cy": 1800,
+     "w": 6800,
+     "h": 1600
+    },
+    {
+     "id": "NB_218",
+     "number": "218",
+     "name": "Аудитория 218 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": -375,
+     "cy": -4010,
+     "w": 950,
+     "h": 2600
+    },
+    {
+     "id": "NB_217",
+     "number": "217",
+     "name": "Аудитория 217 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 690,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_216",
+     "number": "216",
+     "name": "Аудитория 216 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1670,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_215",
+     "number": "215",
+     "name": "Аудитория 215 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2650,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_214",
+     "number": "214",
+     "name": "Аудитория 214 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3630,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_WC2F",
+     "number": "WC2Ж",
+     "name": "WC (Ж)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 4610,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_219",
+     "number": "219",
+     "name": "Аудитория 219 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 520,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_220",
+     "number": "220",
+     "name": "Аудитория 220 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1230,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_221",
+     "number": "221",
+     "name": "Аудитория 221 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1940,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_222",
+     "number": "222",
+     "name": "Аудитория 222 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2650,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_223",
+     "number": "223",
+     "name": "Аудитория 223 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3360,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_224",
+     "number": "224",
+     "name": "Аудитория 224 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4070,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_225",
+     "number": "225",
+     "name": "Аудитория 225 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4780,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "WING_212",
+     "number": "212",
+     "name": "Аудитория 212, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -2415,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_211",
+     "number": "211",
+     "name": "Аудитория 211, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1975,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_210",
+     "number": "210",
+     "name": "Аудитория 210, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1535,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_204",
+     "number": "204",
+     "name": "Аудитория 204, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1095,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_203",
+     "number": "203",
+     "name": "Аудитория 203, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -655,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_202",
+     "number": "202",
+     "name": "Аудитория 202, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -215,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "NB_209",
+     "number": "209",
+     "name": "Аудитория 209, пролёт лестничной клетки",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5550,
+     "cy": -3110,
+     "w": 700,
+     "h": 800
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "title": "3 ЭТАЖ",
+   "short": "3",
+   "mezz": false,
+   "region": [
+    -750,
+    -5410,
+    7200,
+    2800
+   ],
+   "outline": "M100,100 H4378 V-2710 H6150 V100 H7100 V2700 H100 Z M-850,-5310 H6150 V-2710 H-850 Z",
+   "stairs": [
+    {
+     "x": 1850,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5078,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5200,
+     "y": -5310,
+     "w": 900,
+     "h": 2600,
+     "label": "лестничная клетка"
+    }
+   ],
+   "zoneLabels": [
+    {
+     "x": 4728,
+     "y": -1600,
+     "text": "окна",
+     "size": 240
+    },
+    {
+     "x": 4728,
+     "y": -1240,
+     "text": "во двор",
+     "size": 240
+    }
+   ],
+   "rooms": [
+    {
+     "id": "FIL3",
+     "number": "ФИЛФАК3",
+     "name": "Филологический факультет — весь этаж",
+     "type": "department",
+     "conf": "stand",
+     "cx": 3600,
+     "cy": 1800,
+     "w": 6800,
+     "h": 1600
+    },
+    {
+     "id": "WING_308",
+     "number": "308",
+     "name": "Аудитория 308, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -2415,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_307",
+     "number": "307",
+     "name": "Аудитория 307, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1975,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_306",
+     "number": "306",
+     "name": "Аудитория 306, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1535,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_305",
+     "number": "305",
+     "name": "Аудитория 305, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1095,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_304",
+     "number": "304",
+     "name": "Аудитория 304, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -655,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "WING_303",
+     "number": "303",
+     "name": "Аудитория 303, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -215,
+     "w": 1072,
+     "h": 370
+    },
+    {
+     "id": "NB_309",
+     "number": "309",
+     "name": "Аудитория 309, пролёт лестничной клетки",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5550,
+     "cy": -3110,
+     "w": 700,
+     "h": 800
+    },
+    {
+     "id": "NB_311",
+     "number": "311",
+     "name": "Аудитория 311 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": -375,
+     "cy": -4010,
+     "w": 950,
+     "h": 2600
+    },
+    {
+     "id": "NB_312",
+     "number": "312",
+     "name": "Аудитория 312 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 690,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_313",
+     "number": "313",
+     "name": "Аудитория 313 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1670,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_314",
+     "number": "314",
+     "name": "Аудитория 314 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2650,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_315",
+     "number": "315",
+     "name": "Аудитория 315 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3630,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_WC3F",
+     "number": "WC3Ж",
+     "name": "WC (Ж)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 4610,
+     "cy": -4860,
+     "w": 880,
+     "h": 700
+    },
+    {
+     "id": "NB_316",
+     "number": "316",
+     "name": "Аудитория 316 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 520,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_317",
+     "number": "317",
+     "name": "Аудитория 317 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1230,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_318",
+     "number": "318",
+     "name": "Аудитория 318 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1940,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_319",
+     "number": "319",
+     "name": "Аудитория 319 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2650,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_320",
+     "number": "320",
+     "name": "Аудитория 320 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3360,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_321",
+     "number": "321",
+     "name": "Аудитория 321 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4070,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    },
+    {
+     "id": "NB_322",
+     "number": "322",
+     "name": "Аудитория 322 (за коридорчиком)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4780,
+     "cy": -3160,
+     "w": 610,
+     "h": 700
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "title": "4 ЭТАЖ",
+   "short": "4",
+   "mezz": false,
+   "region": [
+    -750,
+    -5410,
+    7200,
+    2800
+   ],
+   "outline": "M100,100 H4378 V-2710 H6150 V100 H7100 V2700 H100 Z M-850,-5310 H6150 V-2710 H-850 Z",
+   "stairs": [
+    {
+     "x": 1850,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5078,
+     "y": 300,
+     "w": 373,
+     "h": 520,
+     "label": "лестница"
+    },
+    {
+     "x": 5200,
+     "y": -5310,
+     "w": 900,
+     "h": 2600,
+     "label": "лестничная клетка"
+    }
+   ],
+   "zoneLabels": [
+    {
+     "x": 4728,
+     "y": -1600,
+     "text": "окна",
+     "size": 240
+    },
+    {
+     "x": 4728,
+     "y": -1240,
+     "text": "во двор",
+     "size": 240
+    }
+   ],
+   "rooms": [
+    {
+     "id": "LIB71",
+     "number": "71",
+     "name": "Библиотека (к. 71), вдоль левого ребра",
+     "type": "library",
+     "conf": "stand",
+     "cx": 956,
+     "cy": 1400,
+     "w": 1711,
+     "h": 2600
+    },
+    {
+     "id": "R71A",
+     "number": "71А",
+     "name": "Аудитория 71А (внутри библиотеки)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 956,
+     "cy": 2029,
+     "w": 1011,
+     "h": 452
+    },
+    {
+     "id": "WC4F",
+     "number": "WC4Ж",
+     "name": "WC (Ж)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 2589,
+     "cy": 352,
+     "w": 622,
+     "h": 377
+    },
+    {
+     "id": "R67",
+     "number": "67",
+     "name": "Аудитория 67",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3367,
+     "cy": 352,
+     "w": 700,
+     "h": 377
+    },
+    {
+     "id": "R69",
+     "number": "69",
+     "name": "Аудитория 69",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4144,
+     "cy": 352,
+     "w": 700,
+     "h": 377
+    },
+    {
+     "id": "WC4M",
+     "number": "WC4М",
+     "name": "WC (М)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 4806,
+     "cy": 352,
+     "w": 506,
+     "h": 377
+    },
+    {
+     "id": "R63A",
+     "number": "63А",
+     "name": "Аудитория 63А",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 6283,
+     "cy": 603,
+     "w": 1633,
+     "h": 1007
+    },
+    {
+     "id": "DEAN4",
+     "number": "70",
+     "name": "Деканат (ауд. 70)",
+     "type": "deanery",
+     "conf": "stand",
+     "cx": 2706,
+     "cy": 2511,
+     "w": 1633,
+     "h": 377
+    },
+    {
+     "id": "GDEAN",
+     "number": "65",
+     "name": "Главный деканат (деканат ЭФ, ауд. 65)",
+     "type": "deanery",
+     "conf": "stand",
+     "cx": 4494,
+     "cy": 2511,
+     "w": 1789,
+     "h": 377
+    },
+    {
+     "id": "R63",
+     "number": "63",
+     "name": "Аудитория 63 (вдоль правого ребра)",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 6283,
+     "cy": 1903,
+     "w": 1633,
+     "h": 1594
+    },
+    {
+     "id": "WING_407",
+     "number": "407",
+     "name": "Аудитория 407, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -2225,
+     "w": 1072,
+     "h": 750
+    },
+    {
+     "id": "WING_404",
+     "number": "404",
+     "name": "Аудитория 404, правый коридорчик",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5614,
+     "cy": -1175,
+     "w": 1072,
+     "h": 750
+    },
+    {
+     "id": "NB_409",
+     "number": "409",
+     "name": "Аудитория 409, пролёт лестничной клетки",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5550,
+     "cy": -3110,
+     "w": 700,
+     "h": 800
+    },
+    {
+     "id": "NB_LOCK4M",
+     "number": "РАЗДЕВАЛКА М",
+     "name": "Мужская раздевалка (за коридорчиком)",
+     "type": "wardrobe",
+     "conf": "stand",
+     "cx": -400,
+     "cy": -4810,
+     "w": 900,
+     "h": 1000
+    },
+    {
+     "id": "NB_GYM4",
+     "number": "СПОРТЗАЛ",
+     "name": "Спортзал (за коридорчиком)",
+     "type": "sport",
+     "conf": "stand",
+     "cx": 2625,
+     "cy": -4010,
+     "w": 5150,
+     "h": 2600
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "title": "5 ЭТАЖ",
+   "short": "5",
+   "mezz": false,
+   "region": [
+    0,
+    0,
+    7200,
+    2800
+   ],
+   "outline": "M100,100 H7100 V2700 H100 Z",
+   "stairs": [
+    {
+     "x": 1072,
+     "y": 205,
+     "w": 373,
+     "h": 294,
+     "label": "лестница"
+    },
+    {
+     "x": 5506,
+     "y": 205,
+     "w": 373,
+     "h": 294,
+     "label": "лестница"
+    }
+   ],
+   "zoneLabels": [],
+   "rooms": [
+    {
+     "id": "R86",
+     "number": "86",
+     "name": "Аудитория 86",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 567,
+     "cy": 352,
+     "w": 778,
+     "h": 377
+    },
+    {
+     "id": "WC5F",
+     "number": "WC5Ж",
+     "name": "WC (Ж)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 1811,
+     "cy": 352,
+     "w": 622,
+     "h": 377
+    },
+    {
+     "id": "R72",
+     "number": "72",
+     "name": "Аудитория 72",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2589,
+     "cy": 352,
+     "w": 778,
+     "h": 377
+    },
+    {
+     "id": "R73",
+     "number": "73",
+     "name": "Аудитория 73",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3444,
+     "cy": 352,
+     "w": 778,
+     "h": 377
+    },
+    {
+     "id": "R74",
+     "number": "74",
+     "name": "Аудитория 74",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4300,
+     "cy": 352,
+     "w": 778,
+     "h": 377
+    },
+    {
+     "id": "WC5M",
+     "number": "WC5М",
+     "name": "WC (М)",
+     "type": "wc",
+     "conf": "stand",
+     "cx": 5078,
+     "cy": 352,
+     "w": 622,
+     "h": 377
+    },
+    {
+     "id": "R75",
+     "number": "75",
+     "name": "Аудитория 75",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 6556,
+     "cy": 352,
+     "w": 1089,
+     "h": 377
+    },
+    {
+     "id": "R82",
+     "number": "82",
+     "name": "Аудитория 82",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 606,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R81",
+     "number": "81",
+     "name": "Аудитория 81",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 1601,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R80",
+     "number": "80",
+     "name": "Аудитория 80",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 2601,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R79",
+     "number": "79",
+     "name": "Аудитория 79",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 3600,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R78",
+     "number": "78",
+     "name": "Аудитория 78",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 4599,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R77",
+     "number": "77",
+     "name": "Аудитория 77",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 5599,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    },
+    {
+     "id": "R76",
+     "number": "76",
+     "name": "Аудитория 76",
+     "type": "auditorium",
+     "conf": "stand",
+     "cx": 6594,
+     "cy": 2407,
+     "w": 972,
+     "h": 377
+    }
+   ]
+  }
+ ]
+}
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= данные и константы ================= */
+  var DATA = JSON.parse(document.getElementById('building-data').textContent);
+  var LEVELS = DATA.levels;
+  LEVELS.forEach(function (l) { l.rooms.forEach(function (r) { r.floor = l.id; }); });
+  var W = 1240, H = 680;
+
+  var TYPE_COLORS = {
+    auditorium: { fill: '#dbeafe', stroke: '#2563eb', text: '#1e3a8a' },
+    department: { fill: '#fef3c7', stroke: '#d97706', text: '#78350f' },
+    deanery:    { fill: '#fee2e2', stroke: '#dc2626', text: '#7f1d1d' },
+    library:    { fill: '#d1fae5', stroke: '#059669', text: '#064e3b' },
+    hall:       { fill: '#ede9fe', stroke: '#7c3aed', text: '#4c1d95' },
+    lab:        { fill: '#cffafe', stroke: '#0891b2', text: '#155e75' },
+    office:     { fill: '#f3f4f6', stroke: '#6b7280', text: '#374151' },
+    food:       { fill: '#ffedd5', stroke: '#ea580c', text: '#7c2d12' },
+    wc:         { fill: '#e0f2fe', stroke: '#0284c7', text: '#075985' },
+    sport:      { fill: '#dcfce8', stroke: '#16a34a', text: '#14532d' },
+    wardrobe:   { fill: '#fef9c3', stroke: '#ca8a04', text: '#713f12' },
+    turnstile:  { fill: '#f1f5f9', stroke: '#64748b', text: '#334155' },
+    yard:       { fill: '#ecfccb', stroke: '#65a30d', text: '#3f6212' },
+    entrance:   { fill: '#f3f4f6', stroke: '#6b7280', text: '#374151' }
+  };
+  var TYPE_LABELS = {
+    auditorium: 'аудитория', department: 'кафедра', deanery: 'деканат',
+    library: 'библиотека', hall: 'актовый зал', lab: 'лаборатория',
+    office: 'офис / служебное', food: 'фудкорт', wc: 'туалет',
+    sport: 'спортзал', wardrobe: 'гардероб / раздевалка',
+    turnstile: 'турникеты', yard: 'дворик', entrance: 'вход / вахта'
+  };
+
+  /* ================= состояние ================= */
+  var state = { level: LEVELS[0].id, selected: null };
+  var view = { k: 1, x: 0, y: 0 };
+  var animId = null;
+  var LV = null;                  // текущий уровень
+  var T = { s: 1, ox: 0, oy: 0 }; // преобразование PDF-координат уровня → viewBox
+  var rectOf = {};                // id комнаты → прямоугольник в координатах viewBox
+
+  var svg = document.getElementById('map');
+  var mapWrap = document.getElementById('mapWrap');
+  var panzoom = null;
+
+  /* ================= утилиты ================= */
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function clip(text, maxChars) {
+    return text.length > maxChars ? text.slice(0, Math.max(1, maxChars - 1)) + '…' : text;
+  }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function levelById(id) {
+    return LEVELS.find(function (l) { return l.id === id; });
+  }
+  function allRooms() {
+    var out = [];
+    LEVELS.forEach(function (l) {
+      l.rooms.forEach(function (r) { out.push(r); });
+    });
+    return out;
+  }
+  function roomById(id) {
+    return allRooms().find(function (r) { return r.id === id || r.number === id; });
+  }
+  function levelOf(room) { return levelById(room.floor != null ? room.floor : room._lvl); }
+  function displayNum(r) {
+    if (/^WC/.test(r.number)) return 'WC';
+    if (r.number === 'ACT') return 'АКТ';
+    if (r.type === 'entrance' || r.type === 'wardrobe' || r.type === 'turnstile' ||
+        r.type === 'yard' || r.type === 'sport' || r.type === 'hall' || r.type === 'food') return '';
+    if (r.number === 'ДЕК' || r.number === 'КАФ') return '';
+    return r.number;
+  }
+
+  /* нормализация поискового ввода: латиница→кириллица, ё→е, отброс мусора */
+  var LATIN_TO_CYR = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У' };
+  function norm(s) {
+    return String(s).toUpperCase()
+      .replace(/Ё/g, 'Е')
+      .replace(/[A-Z]/g, function (c) { return LATIN_TO_CYR[c] || c; })
+      .replace(/[^0-9А-Я]/g, '');
+  }
+  function searchQuery(raw) {
+    return norm(raw).replace(/^(АУДИТОРИЯ|АУД|КАБИНЕТ|КАБ|К)(?=\d)/, '');
+  }
+
+  /* ================= отрисовка уровня ================= */
+  function renderLevel() {
+    LV = levelById(state.level);
+    rectOf = {};
+    var r = LV.region, rw = r[2] - r[0], rh = r[3] - r[1];
+    var s = Math.min(1140 / rw, 500 / rh);
+    T = { s: s, ox: (W - rw * s) / 2 - r[0] * s, oy: 130 + (520 - rh * s) / 2 - r[1] * s };
+
+    var s2 =
+      '<g id="panzoom">' +
+      '<text x="40" y="42" font-size="19" font-weight="700" fill="#111827">Карла Маркса, 31 — ' + esc(LV.title.toLowerCase()) + '</text>' +
+      '<text x="40" y="62" font-size="11" fill="#a8a29e">' +
+        (LV.mezz ? 'полуэтаж между ' + Math.floor(LV.id) + ' и ' + (Math.floor(LV.id) + 1) + ' этажами' : 'основной этаж') +
+        ' · расположение комнат — со схемы-стенда · пунктир = позиция приблизительная</text>' +
+      '<g id="levelg" transform="translate(' + T.ox.toFixed(1) + ',' + T.oy.toFixed(1) + ') scale(' + s.toFixed(4) + ')">' +
+      '<path class="level-outline" d="' + LV.outline + '" fill="#ffffff" stroke="#111827" stroke-width="45" stroke-linejoin="round"/>';
+
+    // лестницы
+    (LV.stairs || []).forEach(function (st) {
+      var lines = '';
+      var n = Math.round(st.h / 130);
+      for (var i = 1; i < n; i++) {
+        var ly = st.y + i * (st.h / n);
+        lines += '<line x1="' + (st.x + 50) + '" y1="' + ly + '" x2="' + (st.x + st.w - 50) + '" y2="' + ly + '" stroke="#9ca3af" stroke-width="30"/>';
+      }
+      s2 += '<g class="stair">' +
+        '<rect x="' + st.x + '" y="' + st.y + '" width="' + st.w + '" height="' + st.h + '" rx="30" fill="#e5e7eb" stroke="#9ca3af" stroke-width="24"/>' +
+        lines +
+        (st.label ? '<text x="' + (st.x + st.w / 2) + '" y="' + (st.y + st.h + 150) + '" text-anchor="middle" font-size="130" fill="#6b7280">' + esc(st.label) + '</text>' : '') +
+        '</g>';
+    });
+
+    // зонные надписи (ФИЛФАК и т.п.)
+    (LV.zoneLabels || []).forEach(function (z) {
+      s2 += '<text class="zone-label" x="' + z.x + '" y="' + z.y + '" text-anchor="middle" font-size="' + (z.size || 500) + '" font-weight="700" fill="#a8a29e" opacity="0.55">' + esc(z.text) + '</text>';
+    });
+
+    // комнаты
+    LV.rooms.forEach(function (room) {
+      room._lvl = LV.id;
+      var c = TYPE_COLORS[room.type] || TYPE_COLORS.office;
+      var x = room.cx - room.w / 2, y = room.cy - room.h / 2;
+      rectOf[room.id] = {
+        x: x * T.s + T.ox, y: y * T.s + T.oy,
+        w: room.w * T.s, h: room.h * T.s
+      };
+      var dashed = room.conf === 'hypothesis' ? ' stroke-dasharray="70 45"' : '';
+      var num = displayNum(room);
+      var maxChars = Math.max(6, Math.floor((room.w - 90) / 95));
+      var label = clip(room.name, maxChars);
+      var numY = room.h > room.w ? room.cy - 60 : room.cy - 40;
+      s2 += '<g class="room" data-room="' + esc(room.id) + '">' +
+        '<rect class="body" x="' + x + '" y="' + y + '" width="' + room.w + '" height="' + room.h + '" rx="55" fill="' + c.fill + '" stroke="' + c.stroke + '" stroke-width="28"' + dashed + '/>' +
+        (num ? '<text x="' + room.cx + '" y="' + numY + '" text-anchor="middle" font-size="250" font-weight="700" fill="' + c.text + '">' + esc(num) + '</text>' : '') +
+        '<text x="' + room.cx + '" y="' + (num ? numY + 210 : room.cy + 60) + '" text-anchor="middle" font-size="135" fill="' + c.text + '">' + esc(label) + '</text>' +
+        '</g>';
+    });
+
+    s2 += '</g></g>';
+    svg.innerHTML = s2;
+    panzoom = document.getElementById('panzoom');
+    svg.setAttribute('aria-label', 'Схема: ' + LV.title + ' корпуса');
+    renderView();
+    if (state.selected && levelOf(state.selected).id === state.level) highlight(state.selected);
+  }
+
+  /* ================= пан/зум ================= */
+  function renderView() {
+    if (panzoom) panzoom.style.transform = 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.k + ')';
+  }
+  function cancelAnim() { if (animId) { cancelAnimationFrame(animId); animId = null; } }
+  function animateTo(target, dur) {
+    cancelAnim();
+    dur = dur || 480;
+    var start = { k: view.k, x: view.x, y: view.y };
+    var t0 = performance.now();
+    function frame(t) {
+      var u = clamp((t - t0) / dur, 0, 1);
+      var e = 1 - Math.pow(1 - u, 3);
+      view.k = start.k + (target.k - start.k) * e;
+      view.x = start.x + (target.x - start.x) * e;
+      view.y = start.y + (target.y - start.y) * e;
+      renderView();
+      if (u < 1) animId = requestAnimationFrame(frame); else animId = null;
+    }
+    animId = requestAnimationFrame(frame);
+  }
+  function fitView() { return { k: 1, x: 0, y: 0 }; }
+  function focusRect(rc) {
+    var k = clamp(760 / Math.max(rc.w, rc.h * 1.7), 1.4, 3.2);
+    var cx = rc.x + rc.w / 2, cy = rc.y + rc.h / 2;
+    animateTo({ k: k, x: W / 2 - cx * k, y: H / 2 - cy * k });
+  }
+  function svgPointFromClient(cx, cy) {
+    var m = svg.getScreenCTM();
+    if (!m) return { x: 0, y: 0 };
+    var inv = m.inverse();
+    return { x: cx * inv.a + cy * inv.c + inv.e, y: cx * inv.b + cy * inv.d + inv.f };
+  }
+  function zoomAtPoint(p, k2) {
+    k2 = clamp(k2, 0.6, 6);
+    view.x = p.x - (p.x - view.x) * k2 / view.k;
+    view.y = p.y - (p.y - view.y) * k2 / view.k;
+    view.k = k2;
+    renderView();
+  }
+
+  var ptrs = new Map();
+  var pinchPrev = null;
+  var movedUnits = 0;
+
+  function overUi(e) {
+    return !!(e.target.closest && e.target.closest('.map-tools, .card'));
+  }
+  mapWrap.addEventListener('pointerdown', function (e) {
+    if (overUi(e)) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1) { movedUnits = 0; svg.classList.add('panning'); }
+    if (ptrs.size === 2) pinchPrev = pinchInfo();
+    cancelAnim();
+  });
+  function pinchInfo() {
+    var a = Array.from(ptrs.values());
+    return { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2 };
+  }
+  window.addEventListener('pointermove', function (e) {
+    if (!ptrs.has(e.pointerId)) return;
+    var prev = ptrs.get(e.pointerId);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    var m = svg.getScreenCTM();
+    var pxPerUnit = m ? m.a : 1;
+    if (ptrs.size === 1) {
+      var dx = (e.clientX - prev.x) / pxPerUnit, dy = (e.clientY - prev.y) / pxPerUnit;
+      view.x += dx; view.y += dy;
+      movedUnits += Math.abs(dx) + Math.abs(dy);
+      renderView();
+    } else if (ptrs.size === 2 && pinchPrev) {
+      var now = pinchInfo();
+      var p = svgPointFromClient(now.mx, now.my);
+      zoomAtPoint(p, view.k * now.d / pinchPrev.d);
+      view.x += (now.mx - pinchPrev.mx) / pxPerUnit;
+      view.y += (now.my - pinchPrev.my) / pxPerUnit;
+      renderView();
+      movedUnits += 10;
+      pinchPrev = now;
+    }
+  });
+  function onPointerEnd(e) {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinchPrev = null;
+    if (ptrs.size === 0) svg.classList.remove('panning');
+  }
+  window.addEventListener('pointerup', onPointerEnd);
+  window.addEventListener('pointercancel', onPointerEnd);
+  window.addEventListener('blur', function () { ptrs.clear(); pinchPrev = null; svg.classList.remove('panning'); });
+
+  // Тачпад-управление (как на картах): перетаскивание — панорама; прокрутка двумя
+  // пальцами — перемещение карты; щипок (Ctrl + прокрутка) или колесо с Ctrl — зум к курсору
+  mapWrap.addEventListener('wheel', function (e) {
+    if (overUi(e)) return;
+    e.preventDefault();
+    cancelAnim();
+    if (e.ctrlKey || e.metaKey) {
+      var p = svgPointFromClient(e.clientX, e.clientY);
+      var f = Math.exp(-e.deltaY * 0.01);
+      zoomAtPoint(p, view.k * clamp(f, 0.85, 1.18));
+    } else {
+      var m = svg.getScreenCTM();
+      var u = m ? 1 / m.a : 1;
+      view.x -= e.deltaX * u;
+      view.y -= e.deltaY * u;
+      renderView();
+    }
+  }, { passive: false });
+
+  svg.addEventListener('dblclick', function (e) {
+    e.preventDefault();
+    cancelAnim();
+    zoomAtPoint(svgPointFromClient(e.clientX, e.clientY), view.k * 1.6);
+  });
+
+  document.getElementById('zoomIn').addEventListener('click', function () {
+    cancelAnim(); zoomAtPoint({ x: W / 2, y: H / 2 }, view.k * 1.35);
+  });
+  document.getElementById('zoomOut').addEventListener('click', function () {
+    cancelAnim(); zoomAtPoint({ x: W / 2, y: H / 2 }, view.k / 1.35);
+  });
+  document.getElementById('zoomReset').addEventListener('click', function () { animateTo(fitView()); });
+
+  svg.addEventListener('click', function (e) {
+    if (movedUnits > 6) { movedUnits = 0; return; }
+    var g = e.target.closest ? e.target.closest('[data-room]') : null;
+    if (g) {
+      var r = roomById(g.getAttribute('data-room'));
+      if (r) { selectRoom(r); return; }
+    }
+    if (state.selected) clearSelection();
+  });
+
+  /* ================= подсветка и выбор ================= */
+  function highlight(room) {
+    svg.classList.add('dimmed');
+    var g = svg.querySelector('[data-room="' + CSS.escape(room.id) + '"]');
+    if (g) g.classList.add('hl');
+    var rc = rectOf[room.id];
+    var old = svg.querySelector('.hl-ring');
+    if (old) old.remove();
+    if (rc) {
+      var ring = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      ring.setAttribute('class', 'hl-ring');
+      ring.setAttribute('x', rc.x - 6); ring.setAttribute('y', rc.y - 6);
+      ring.setAttribute('width', rc.w + 12); ring.setAttribute('height', rc.h + 12);
+      ring.setAttribute('rx', 10);
+      panzoom.appendChild(ring);
+    }
+  }
+  function clearHighlight() {
+    svg.classList.remove('dimmed');
+    var g = svg.querySelector('.hl'); if (g) g.classList.remove('hl');
+    var ring = svg.querySelector('.hl-ring'); if (ring) ring.remove();
+  }
+
+  function selectRoom(room, opts) {
+    opts = opts || {};
+    state.selected = room;
+    if (levelOf(room).id !== state.level) {
+      state.level = levelOf(room).id;
+      updateFloorBtns();
+      renderLevel();
+    } else {
+      highlight(room);
+    }
+    var rc = rectOf[room.id];
+    if (rc) focusRect(rc);
+    showRoomCard(room);
+    if (!opts.noHash) {
+      try { history.replaceState(null, '', '#room=' + encodeURIComponent(room.number)); } catch (err) { /* file:// может запрещать */ }
+    }
+  }
+  function clearSelection(opts) {
+    opts = opts || {};
+    state.selected = null;
+    clearHighlight();
+    closeCard();
+    animateTo(fitView());
+    if (!opts.noHash) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (err) { /* ignore */ }
+    }
+  }
+
+  /* ================= уровни (кнопки) ================= */
+  var floorsNav = document.getElementById('floors');
+  function buildFloorBtns() {
+    floorsNav.innerHTML = '';
+    LEVELS.forEach(function (lv) {
+      var b = document.createElement('button');
+      b.className = 'floor-btn' + (lv.mezz ? ' mezz' : '') + (lv.id === state.level ? ' active' : '');
+      b.textContent = lv.short;
+      b.dataset.level = String(lv.id);
+      b.setAttribute('aria-label', lv.title);
+      b.title = lv.title;
+      b.addEventListener('click', function () {
+        if (state.level === lv.id) { animateTo(fitView()); return; }
+        state.level = lv.id;
+        state.selected = null;
+        clearHighlight();
+        updateFloorBtns();
+        renderLevel();
+        animateTo(fitView());
+        closeCard();
+      });
+      floorsNav.appendChild(b);
+    });
+    var hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = 'главный корпус · этажи';
+    floorsNav.appendChild(hint);
+  }
+  function updateFloorBtns() {
+    floorsNav.querySelectorAll('.floor-btn').forEach(function (b) {
+      b.classList.toggle('active', Number(b.dataset.level) === state.level);
+    });
+  }
+
+  /* ================= карточка ================= */
+  var card = document.getElementById('card');
+  function syncCardClass() {
+    document.body.classList.toggle('card-open', card.classList.contains('open'));
+  }
+  function closeCard() { card.classList.remove('open'); syncCardClass(); }
+
+  function levelName(lv) {
+    return lv.mezz
+      ? lv.title.toLowerCase() + ' (между ' + Math.floor(lv.id) + ' и ' + (Math.floor(lv.id) + 1) + ')'
+      : lv.title.toLowerCase();
+  }
+  function howToFind(room) {
+    var lv = levelOf(room);
+    var r = lv.region, cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;
+    if (room.type === 'entrance' && room.id === 'GUARD') return '1 этаж · главный вход с ул. Карла Маркса';
+    var parts = [levelName(lv)];
+    var nx = (room.cx - r[0]) / (r[2] - r[0]), ny = (room.cy - r[1]) / (r[3] - r[1]);
+    if (Math.abs(nx - 0.5) > Math.abs(ny - 0.5)) parts.push(nx < 0.5 ? 'левая часть схемы' : 'правая часть схемы');
+    else parts.push(ny < 0.5 ? 'дальняя часть схемы' : 'ближняя часть схемы');
+    var best = null, bd = Infinity;
+    (lv.stairs || []).forEach(function (st) {
+      var d = (st.x - room.cx) * (st.x - room.cx) + (st.y - room.cy) * (st.y - room.cy);
+      if (d < bd) { bd = d; best = st; }
+    });
+    if (best) parts.push(best.x < cx ? 'ближе к лестнице слева' : 'ближе к лестнице справа');
+    return parts.join(' · ');
+  }
+  function showRoomCard(room) {
+    var lv = levelOf(room);
+    var confLabel = DATA.confLabels[room.conf] || DATA.confLabels.hypothesis;
+    var confColor = room.conf === 'stand' ? '#059669' : room.conf === 'official' ? '#2563eb' : '#d97706';
+    var badges =
+      '<span class="badge">' + esc(levelName(lv)) + '</span>' +
+      '<span class="badge">' + esc(TYPE_LABELS[room.type] || room.type) + '</span>' +
+      '<span class="badge" style="color:' + confColor + '; border-color:' + confColor + '40">' + confLabel + '</span>';
+    var num = displayNum(room) || (room.number && !/^(WC|ТУРН|ДЕК|КАФ|ВХОД)/.test(room.number) ? room.number : '');
+    card.innerHTML =
+      '<button class="card-close" aria-label="Закрыть">✕</button>' +
+      (num ? '<div class="card-num">' + esc(num) + '</div>' : '') +
+      '<h2>' + esc(room.name) + '</h2>' +
+      '<div class="badges">' + badges + '</div>' +
+      '<p class="howto"><strong>Как найти:</strong> ' + esc(howToFind(room)) + '</p>' +
+      (room.conf === 'hypothesis'
+        ? '<p class="note">Позиция на схеме приблизительная: номер известен из расписаний ЭФ, размещён рядом с родственными номерами. Уточните на месте.</p>'
+        : '');
+    card.classList.add('open');
+    syncCardClass();
+    card.querySelector('.card-close').addEventListener('click', function () { clearSelection(); });
+  }
+  function showAboutCard() {
+    var chips = Object.keys(TYPE_COLORS).map(function (t) {
+      var c = TYPE_COLORS[t];
+      return '<span class="chip"><i style="background:' + c.fill + '; border:1.5px solid ' + c.stroke + '"></i>' + TYPE_LABELS[t] + '</span>';
+    }).join('');
+    card.innerHTML =
+      '<button class="card-close" aria-label="Закрыть">✕</button>' +
+      '<h2>Обозначения</h2>' +
+      '<div class="legend">' + chips + '</div>' +
+      '<p class="note"><strong>Размечены этажи 1–5 главного корпуса.</strong> Вход с ул. Карла Маркса — низ схемы 1 этажа, по центру. На этажах 2–4 к корпусу сверху примыкает правый коридорчик (лента с «окнами во двор» и аудитории 202–212, 303–308, 404/407); за ним — вторая часть кампуса (этаж 2: ауд. 214–225). Этажи 2–3 главного корпуса — филфак, детализация позже.</p>' +
+      '<p class="note" style="margin-top:8px">Управление: перетаскивание — панорама; на тачпаде прокрутка — перемещение карты, щипок (или Ctrl + прокрутка) — масштаб; кнопки +/− и двойной клик — тоже зум. Комнату можно найти поиском или кликнуть по ней.</p>';
+    card.classList.add('open');
+    syncCardClass();
+    card.querySelector('.card-close').addEventListener('click', closeCard);
+  }
+  document.getElementById('legendBtn').addEventListener('click', function () {
+    if (card.classList.contains('open') && card.dataset.mode === 'about') closeCard();
+    else { card.dataset.mode = 'about'; showAboutCard(); }
+  });
+
+  /* ================= поиск ================= */
+  var input = document.getElementById('searchInput');
+  var sug = document.getElementById('sug');
+  var sugItems = [], sugActive = -1;
+
+  function searchRooms(q) {
+    var scored = [];
+    allRooms().forEach(function (r) {
+      var lv = levelOf(r);
+      var n = norm(r.number), nm = norm(r.name), ty = norm(TYPE_LABELS[r.type] || '');
+      var score = 0;
+      if (n === q) score = 100;
+      else if (q && n.startsWith(q)) score = 80 - Math.min(20, n.length);
+      else if (q.length >= 3 && nm.includes(q)) score = 50;
+      else if (q.length >= 3 && ty.includes(q)) score = 30;
+      if (score) scored.push([score, r]);
+    });
+    scored.sort(function (a, b) { return b[0] - a[0]; });
+    return scored.slice(0, 8).map(function (x) { return x[1]; });
+  }
+  function closeSug() {
+    sug.classList.remove('open');
+    sug.innerHTML = '';
+    sugItems = []; sugActive = -1;
+    input.setAttribute('aria-expanded', 'false');
+  }
+  function renderSug(list) {
+    sugItems = list; sugActive = -1;
+    if (!list.length) {
+      sug.innerHTML = '<div class="sug-empty">Ничего не найдено. Попробуйте номер (63А, 316) или слово («деканат», «фудкорт», «туалет», «спортзал»).</div>';
+    } else {
+      sug.innerHTML = list.map(function (r, i) {
+        var lv = levelOf(r);
+        return '<div class="sug-item" role="option" data-i="' + i + '">' +
+          '<span class="sug-num">' + esc(displayNum(r) || TYPE_LABELS[r.type] || '•') + '</span>' +
+          '<span class="sug-name">' + esc(r.name) + '</span>' +
+          '<span class="sug-floor">' + lv.short + ' эт</span>' +
+          '</div>';
+      }).join('');
+    }
+    sug.classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function markActive() {
+    sug.querySelectorAll('.sug-item').forEach(function (el, i) {
+      el.classList.toggle('active', i === sugActive);
+    });
+  }
+  function choose(room) {
+    closeSug();
+    input.blur();
+    selectRoom(room);
+    card.dataset.mode = 'room';
+  }
+
+  input.addEventListener('input', function () {
+    var q = searchQuery(input.value);
+    if (!q) { closeSug(); return; }
+    renderSug(searchRooms(q));
+  });
+  input.addEventListener('focus', function () {
+    var q = searchQuery(input.value);
+    if (q) renderSug(searchRooms(q));
+  });
+  input.addEventListener('keydown', function (e) {
+    if (!sug.classList.contains('open')) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!sugItems.length) return;
+      sugActive = e.key === 'ArrowDown'
+        ? (sugActive + 1) % sugItems.length
+        : (sugActive - 1 + sugItems.length) % sugItems.length;
+      markActive();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      var room = sugActive >= 0 ? sugItems[sugActive] : byExact(input.value) || sugItems[0];
+      if (room) choose(room);
+    } else if (e.key === 'Escape') {
+      closeSug();
+    }
+  });
+  function byExact(raw) {
+    var q = searchQuery(raw);
+    return allRooms().find(function (r) { return norm(r.number) === q; });
+  }
+  // Мышь: выбор по click (элемент доживает до конца клика); тач: по pointerdown
+  sug.addEventListener('pointerdown', function (e) {
+    var item = e.target.closest('.sug-item');
+    if (item && e.pointerType === 'touch') {
+      e.preventDefault();
+      choose(sugItems[Number(item.dataset.i)]);
+    }
+  });
+  sug.addEventListener('click', function (e) {
+    var item = e.target.closest('.sug-item');
+    if (item) choose(sugItems[Number(item.dataset.i)]);
+  });
+  document.addEventListener('pointerdown', function (e) {
+    if (!e.target.closest('.search')) closeSug();
+  });
+
+  /* ================= хэш (ссылки вида #room=63А) ================= */
+  function roomFromHash() {
+    var m = /^room=(.+)$/.exec(decodeURIComponent(location.hash.slice(1)));
+    if (!m) return null;
+    return allRooms().find(function (r) { return norm(r.number) === norm(m[1]); }) || null;
+  }
+  window.addEventListener('hashchange', function () {
+    var r = roomFromHash();
+    if (r && r !== state.selected) { selectRoom(r, { noHash: true }); card.dataset.mode = 'room'; }
+    else if (!r && state.selected) clearSelection({ noHash: true });
+  });
+
+  /* ================= запуск ================= */
+  buildFloorBtns();
+  renderLevel();
+  var initial = roomFromHash();
+  if (initial) { selectRoom(initial, { noHash: true }); card.dataset.mode = 'room'; }
+})();
+</script>
+</body>
+</html>
