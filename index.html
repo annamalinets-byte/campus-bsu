@@ -116,6 +116,11 @@
     padding: 4px 10px; border-radius: 999px; font-size: 12px; color: #44403c; }
   .chip i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
 
+  .route-box { margin-top: 2px; padding-top: 10px; border-top: 1px dashed #e7e5e4; }
+  .route-btn { width: 100%; padding: 10px; border: 1.5px solid #2563eb; background: #eff6ff; color: #1d4ed8;
+    border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .route-btn:hover { background: #dbeafe; }
+
   @media (min-width: 900px) {
     .topbar { padding: 14px 24px; }
     .title-row h1 { font-size: 18px; }
@@ -1109,6 +1114,17 @@
      "cy": -4010,
      "w": 5150,
      "h": 2600
+    },
+    {
+     "id": "NB_LOCK4F",
+     "number": "РАЗДЕВАЛКА Ж",
+     "name": "Женская раздевалка (за коридорчиком)",
+     "type": "wardrobe",
+     "conf": "stand",
+     "cx": -400,
+     "cy": -3510,
+     "w": 900,
+     "h": 1000
     }
    ]
   },
@@ -1616,6 +1632,7 @@
 
   function selectRoom(room, opts) {
     opts = opts || {};
+    stopRoute();
     state.selected = room;
     if (levelOf(room).id !== state.level) {
       state.level = levelOf(room).id;
@@ -1633,6 +1650,7 @@
   }
   function clearSelection(opts) {
     opts = opts || {};
+    stopRoute();
     state.selected = null;
     clearHighlight();
     closeCard();
@@ -1704,6 +1722,113 @@
     if (best) parts.push(best.x < cx ? 'ближе к лестнице слева' : 'ближе к лестнице справа');
     return parts.join(' · ');
   }
+
+  /* ============ маршрут от входа (облегчённый, v1) ============ */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function stairIsCell(st) { return st.label === 'лестничная клетка'; }
+  function stairSide(st, lv) {
+    return st.x < (lv.region[0] + lv.region[2]) / 2 ? 'left' : 'right';
+  }
+  function mainStairs(lv) {
+    return (lv.stairs || []).filter(function (s) { return !stairIsCell(s); });
+  }
+  function stairBySide(lv, side) {
+    var found = null;
+    mainStairs(lv).forEach(function (st) { if (stairSide(st, lv) === side) found = st; });
+    return found;
+  }
+  function nearestMainStair(room) {
+    var lv = levelOf(room), best = null, bd = Infinity;
+    mainStairs(lv).forEach(function (st) {
+      var d = (st.x - room.cx) * (st.x - room.cx) + (st.y - room.cy) * (st.y - room.cy);
+      if (d < bd) { bd = d; best = st; }
+    });
+    return best;
+  }
+  /* тип маршрута: тот же этаж | главный корпус | правый коридорчик | вторая часть кампуса */
+  function routeKind(room) {
+    if (levelOf(room).id === 1) return 'same';
+    if (/^WING_/.test(room.id)) return 'wing';
+    if (/^NB_/.test(room.id)) return 'nb';
+    return 'main';
+  }
+  function routeSteps(room) {
+    var lv = levelOf(room), lv1 = levelById(1);
+    var entry = { level: 1, roomId: 'ENTRY', label: 'Главный вход с ул. Карла Маркса (1 этаж)' };
+    var kind = routeKind(room);
+    if (kind === 'same') return [entry, { level: 1, roomId: room.id, label: room.name }];
+    if (kind === 'wing' || kind === 'nb') {
+      var steps = [entry,
+        { level: 1, stair: stairBySide(lv1, 'right'), label: 'Правая лестница — наверх' },
+        { level: lv.id, stair: stairBySide(lv, 'right'), label: lv.id + '-й этаж, правая лестница' }];
+      if (kind === 'wing') {
+        steps.push({ level: lv.id, roomId: room.id, label: room.name });
+      } else {
+        steps.push(
+          { level: lv.id, stair: (lv.stairs || []).filter(stairIsCell)[0], label: 'По коридорчику — до лестничной клетки второй части кампуса' },
+          { level: lv.id, roomId: room.id, label: room.name });
+      }
+      return steps;
+    }
+    var st = nearestMainStair(room);
+    var side = stairSide(st, lv);
+    return [entry,
+      { level: 1, stair: stairBySide(lv1, side), label: (side === 'left' ? 'Левая' : 'Правая') + ' лестница — наверх' },
+      { level: lv.id, stair: st, label: lv.id + '-й этаж' },
+      { level: lv.id, roomId: room.id, label: room.name }];
+  }
+  function routeText(room) {
+    var kind = routeKind(room), lv = levelOf(room);
+    if (kind === 'same') return 'главный вход и цель — на этом же 1-м этаже';
+    if (kind === 'main') {
+      var side = stairSide(nearestMainStair(room), lv) === 'left' ? 'левая' : 'правая';
+      return 'вход (1 эт.) → ' + side + ' лестница → ' + lv.id + '-й этаж → цель';
+    }
+    if (kind === 'wing') return 'вход (1 эт.) → правая лестница → ' + lv.id + '-й этаж → правый коридорчик («окна во двор») → аудитория';
+    return 'вход (1 эт.) → правая лестница → ' + lv.id + '-й этаж → коридорчик до конца → вторая часть кампуса → аудитория';
+  }
+  var routeTimers = [];
+  function stopRoute() { routeTimers.forEach(function (t) { clearTimeout(t); }); routeTimers = []; }
+  function flashRect(rc) {
+    var old = svg.querySelectorAll('.hl-ring');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    var ring = document.createElementNS(SVGNS, 'rect');
+    ring.setAttribute('class', 'hl-ring');
+    ring.setAttribute('x', rc.x - 6); ring.setAttribute('y', rc.y - 6);
+    ring.setAttribute('width', rc.w + 12); ring.setAttribute('height', rc.h + 12);
+    ring.setAttribute('rx', 10);
+    panzoom.appendChild(ring);
+  }
+  function playRoute(room) {
+    stopRoute();
+    closeCard();
+    var steps = routeSteps(room);
+    steps.forEach(function (st, i) {
+      routeTimers.push(setTimeout(function () {
+        if (state.level !== st.level) {
+          state.level = st.level; state.selected = null;
+          updateFloorBtns(); renderLevel();
+        }
+        if (st.roomId) {
+          var r = roomById(st.roomId);
+          highlight(r);
+          var rc = rectOf[st.roomId];
+          if (rc) focusRect(rc);
+        } else if (st.stair) {
+          var s = st.stair;
+          var rc2 = { x: s.x * T.s + T.ox, y: s.y * T.s + T.oy, w: s.w * T.s, h: s.h * T.s };
+          flashRect(rc2);
+          var k = clamp(700 / Math.max(rc2.w, rc2.h), 1.2, 2.6);
+          animateTo({ k: k, x: W / 2 - (rc2.x + rc2.w / 2) * k, y: H / 2 - (rc2.y + rc2.h / 2) * k });
+        }
+      }, i * 1600));
+    });
+    routeTimers.push(setTimeout(function () {
+      selectRoom(room, { noHash: true });
+      card.dataset.mode = 'room';
+    }, steps.length * 1600));
+  }
+
   function showRoomCard(room) {
     var lv = levelOf(room);
     var confLabel = DATA.confLabels[room.conf] || DATA.confLabels.hypothesis;
@@ -1719,12 +1844,20 @@
       '<h2>' + esc(room.name) + '</h2>' +
       '<div class="badges">' + badges + '</div>' +
       '<p class="howto"><strong>Как найти:</strong> ' + esc(howToFind(room)) + '</p>' +
+      (room.id !== 'ENTRY'
+        ? '<div class="route-box">' +
+          '<p class="howto"><strong>От входа:</strong> ' + esc(routeText(room)) + '</p>' +
+          '<button class="route-btn" id="routeBtn">▶&nbsp;Показать путь на карте</button>' +
+          '</div>'
+        : '') +
       (room.conf === 'hypothesis'
         ? '<p class="note">Позиция на схеме приблизительная: номер известен из расписаний ЭФ, размещён рядом с родственными номерами. Уточните на месте.</p>'
         : '');
     card.classList.add('open');
     syncCardClass();
     card.querySelector('.card-close').addEventListener('click', function () { clearSelection(); });
+    var routeBtn = card.querySelector('#routeBtn');
+    if (routeBtn) routeBtn.addEventListener('click', function () { playRoute(room); });
   }
   function showAboutCard() {
     var chips = Object.keys(TYPE_COLORS).map(function (t) {
@@ -1751,18 +1884,75 @@
   var sug = document.getElementById('sug');
   var sugItems = [], sugActive = -1;
 
+  /* синонимы: «туалет»/«столовая»/«спортзал»… → тип или конкретные комнаты */
+  var POI_ALIASES = [
+    { words: ['ТУАЛЕТ', 'WC', 'СОРТИР', 'УБОРНАЯ'], type: 'wc' },
+    { words: ['СТОЛОВАЯ', 'ФУДКОРТ', 'ЕДА', 'ПОЕСТЬ', 'КАФЕ', 'КОФЕ', 'БУФЕТ'], type: 'food' },
+    { words: ['БИБЛИОТЕКА', 'КНИГИ', 'АБОНЕМЕНТ', 'ЧИТАЛЬНЯ'], type: 'library' },
+    { words: ['ГАРДЕРОБ', 'КУРТКА', 'РАЗДЕВАЛКА'], type: 'wardrobe' },
+    { words: ['СПОРТЗАЛ', 'СПОРТ', 'ФИЗРА'], type: 'sport' },
+    { words: ['ДЕКАНАТ'], type: 'deanery' },
+    { words: ['ФИЛФАК', 'ФИЛОЛОГИЯ'], type: 'department' },
+    { words: ['ТУРНИКЕТ'], type: 'turnstile' },
+    { words: ['ВХОД'], ids: ['ENTRY'] },
+    { words: ['ДВОРИК', 'ДВОР', 'ВЫХОД'], ids: ['EXIT15'] },
+    { words: ['ВАХТА', 'ОХРАНА'], ids: ['GUARD'] },
+    { words: ['АКТОВЫЙ', 'АКТ'], ids: ['ACT'] }
+  ];
+  function matchAlias(q) {
+    for (var i = 0; i < POI_ALIASES.length; i++) {
+      var ws = POI_ALIASES[i].words;
+      for (var j = 0; j < ws.length; j++) {
+        if (ws[j].indexOf(q) === 0 || q.indexOf(ws[j]) === 0) return POI_ALIASES[i];
+      }
+    }
+    return null;
+  }
+  /* расстояние Левенштейна — для опечаток в номерах аудиторий */
+  function lev(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return 2;
+    var prev = [], cur;
+    for (var j = 0; j <= b.length; j++) prev[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      cur = [i];
+      for (var k = 1; k <= b.length; k++) {
+        cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1,
+          prev[k - 1] + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+
   function searchRooms(q) {
+    var alias = matchAlias(q);
+    var wcGender = /[Ж]$/.test(q) ? 'Ж' : /[М]$/.test(q) ? 'М' : '';
+    var wcFloor = (q.match(/\d/) || [])[0];
     var scored = [];
     allRooms().forEach(function (r) {
-      var lv = levelOf(r);
       var n = norm(r.number), nm = norm(r.name), ty = norm(TYPE_LABELS[r.type] || '');
       var score = 0;
       if (n === q) score = 100;
       else if (q && n.startsWith(q)) score = 80 - Math.min(20, n.length);
       else if (q.length >= 3 && nm.includes(q)) score = 50;
       else if (q.length >= 3 && ty.includes(q)) score = 30;
+      if (alias && !score) {
+        var ok = alias.ids ? alias.ids.indexOf(r.id) >= 0 : r.type === alias.type;
+        if (ok && alias.type === 'wc') {
+          if (wcGender && !n.endsWith(wcGender)) ok = false;
+          if (wcFloor && String(levelOf(r).id) !== wcFloor) ok = false;
+        }
+        if (ok) score = 60;
+      }
       if (score) scored.push([score, r]);
     });
+    // опечатка в номере: если точных совпадений нет — номер с расстоянием ≤ 1
+    if (!scored.length && q.length >= 2) {
+      allRooms().forEach(function (r) {
+        var n = norm(r.number);
+        if (n.length >= 2 && lev(q, n) <= 1) scored.push([35, r]);
+      });
+    }
     scored.sort(function (a, b) { return b[0] - a[0]; });
     return scored.slice(0, 8).map(function (x) { return x[1]; });
   }
